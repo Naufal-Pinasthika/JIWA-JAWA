@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "catur-jawa"
+version = "0.1.0"
+description = "Two-player Dam-daman Jawa over reliable UDP"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "JIWA-JAWA" }]
+dependencies = []
+
+[project.scripts]
+catur-jawa = "catur_jawa.main:main"
+catur-jawa-build-pdf = "scripts.build_usage_pdf:main"
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8",
+  "pytest-asyncio>=0.23",
+  "ruff>=0.5",
+  "mypy>=1.10",
+]
+gui = [
+  "PySide6>=6.7",
+]
+pdf = [
+  "reportlab>=4",
+]
+all = [
+  "pytest>=8",
+  "pytest-asyncio>=0.23",
+  "ruff>=0.5",
+  "mypy>=1.10",
+  "PySide6>=6.7",
+  "reportlab>=4",
+]
+
+[tool.setuptools.packages.find]
+include = ["catur_jawa*", "raft_logger*", "scripts*"]
+
+[tool.setuptools.package-data]
+catur_jawa = ["ui/resources/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true

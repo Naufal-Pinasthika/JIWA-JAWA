@@ -1,0 +1,18 @@
+from __future__ import annotations
+
+from enum import StrEnum
+
+
+class UiSessionState(StrEnum):
+    MENU = "MENU"
+    HOST_CONFIG = "HOST_CONFIG"
+    HOST_STARTING = "HOST_STARTING"
+    HOST_LOBBY = "HOST_LOBBY"
+    JOIN_CONFIG = "JOIN_CONFIG"
+    CONNECTING = "CONNECTING"
+    JOIN_LOBBY = "JOIN_LOBBY"
+    STARTING_MATCH = "STARTING_MATCH"
+    IN_GAME = "IN_GAME"
+    GAME_OVER = "GAME_OVER"
+    DISCONNECTING = "DISCONNECTING"
+    ERROR = "ERROR"

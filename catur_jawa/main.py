@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import socket
 import sys
 from typing import cast
+from uuid import uuid4
 
 from PySide6.QtCore import QSettings, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QCloseEvent, QFont, QMouseEvent
@@ -25,11 +25,12 @@ from PySide6.QtWidgets import (
 
 from catur_jawa.application.host import HostRuntime
 from catur_jawa.domain.models import PlayerSide
+from catur_jawa.session.addressing import room_address
 from catur_jawa.session.config import ConfigError, HostConfig, JoinConfig
 from catur_jawa.session.controller import ActiveSession, SessionController
 from catur_jawa.session.states import UiSessionState
 from catur_jawa.ui import metrics, theme, typography
-from catur_jawa.ui.gui import GamePage, MahoganyRoot, PlayerBadge
+from catur_jawa.ui.gui import GamePage, MahoganyRoot, PlayerBadge, rating_snapshot_lines
 
 
 class GlassPanel(QFrame):
@@ -297,7 +298,9 @@ class JoinSetupPage(SetupPage):
         self.connect_button.setObjectName("Primary")
         self.connect_button.setMinimumHeight(metrics.PRIMARY_HEIGHT)
         layout.addWidget(FieldGroup("Display name", self.name, token=_token("B")))
-        layout.addWidget(FieldGroup("Host address", self.host, "Examples: 192.168.1.20 or localhost."))
+        layout.addWidget(
+            FieldGroup("Host address", self.host, "Examples: 100.101.22.33, 192.168.1.20, or localhost.")
+        )
         layout.addWidget(FieldGroup("Port", self.port, "Default: 9999."))
         layout.addWidget(self.error)
         layout.addSpacing(4)
@@ -358,6 +361,9 @@ class LobbyPage(BasePage):
         self.player_b = PlayerBadge(PlayerSide.B, "Waiting")
         self.status = QLabel("Waiting for another player...")
         self.status.setObjectName("PageDescription")
+        self.rating = QLabel("")
+        self.rating.setObjectName("HelperText")
+        self.rating.setWordWrap(True)
         self.address = QLabel("")
         self.address.setObjectName("HelperText")
         self.copy = QPushButton("Copy Address")
@@ -368,6 +374,7 @@ class LobbyPage(BasePage):
         layout.addWidget(self.player_a)
         layout.addWidget(self.player_b)
         layout.addWidget(self.status)
+        layout.addWidget(self.rating)
         layout.addWidget(self.address)
         layout.addSpacing(8)
         layout.addWidget(self.copy)
@@ -388,7 +395,7 @@ class LobbyPage(BasePage):
         runtime = self.session.runtime
         if self.session.side.value == "A":
             local = runtime.transport.local_address() if isinstance(runtime, HostRuntime) else ("0.0.0.0", 9999)
-            address = f"{_local_ip()}:{local[1]}"
+            address = room_address(local[1])
             peer_ready = bool(getattr(runtime, "peer_ready", False))
             name = str(getattr(runtime, "name", "Alice"))
             self.player_a = self._replace_badge(self.player_a, "A", f"{name} · Host · Ready")
@@ -398,6 +405,7 @@ class LobbyPage(BasePage):
                 "Player B · Connected" if peer_ready else "Waiting for Player B",
             )
             self.status.setText("Player B connected." if peer_ready else "Waiting for another player...")
+            self.rating.setText("\n".join(rating_snapshot_lines(getattr(runtime, "rating_snapshot", None))))
             self.address.setText(f"Room address: {address}")
             self.start.setText("Start Game")
             self.start.setEnabled(peer_ready)
@@ -407,6 +415,7 @@ class LobbyPage(BasePage):
             self.player_a = self._replace_badge(self.player_a, "A", "Host · Ready")
             self.player_b = self._replace_badge(self.player_b, "B", f"{runtime.name} · Player B")
             self.status.setText("Connected to host." if ready else "Connecting to the game...")
+            self.rating.setText("\n".join(rating_snapshot_lines(getattr(runtime, "rating_snapshot", None))))
             self.address.setText("Assigned side: Player B")
             self.start.setText("Enter Game")
             self.start.setEnabled(ready)
@@ -520,6 +529,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.controller = controller
         self.settings = settings
+        self.device_id = _device_id(settings)
         self.game_page: GamePage | None = None
         self.setWindowTitle("Catur Jawa")
         window_size = settings.value("window_size")
@@ -580,7 +590,7 @@ class MainWindow(QMainWindow):
 
     def _create_host(self, name: str, bind_host: str, port: int) -> None:
         try:
-            session = self.controller.start_host(HostConfig(name, bind_host, port))
+            session = self.controller.start_host(HostConfig(name, bind_host, port), self.device_id)
         except (ConfigError, OSError) as exc:
             self.host_setup.show_error(_friendly_host_error(port, exc))
             return
@@ -592,7 +602,7 @@ class MainWindow(QMainWindow):
     def _join_host(self, name: str, host: str, port: int) -> None:
         try:
             config = JoinConfig.parse(name, f"{host}:{port}")
-            session = self.controller.join_host(config)
+            session = self.controller.join_host(config, self.device_id)
         except (ConfigError, OSError) as exc:
             self.join_setup.show_error(str(exc))
             return
@@ -614,6 +624,7 @@ class MainWindow(QMainWindow):
         session = self.controller.enter_game()
         self.game_page = GamePage(session.runtime, session.side, session.runtime.name)
         self.game_page.show_coordinates = bool(self.settings.value("show_coordinates", False, bool))
+        self.game_page.leave_requested.connect(self.return_to_menu)
         self.stack.addWidget(self.game_page)
         self.stack.setCurrentWidget(self.game_page)
 
@@ -668,13 +679,13 @@ def _friendly_host_error(port: int, exc: BaseException) -> str:
     )
 
 
-def _local_ip() -> str:
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-            sock.connect(("8.8.8.8", 80))
-            return cast(tuple[str, int], sock.getsockname())[0]
-    except OSError:
-        return "127.0.0.1"
+def _device_id(settings: QSettings) -> str:
+    value = settings.value("device_id")
+    if isinstance(value, str) and value:
+        return value
+    generated = str(uuid4())
+    settings.setValue("device_id", generated)
+    return generated
 
 
 def main(argv: list[str] | None = None) -> int:

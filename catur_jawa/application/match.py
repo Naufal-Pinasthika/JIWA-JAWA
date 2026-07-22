@@ -5,7 +5,7 @@ from random import Random
 from uuid import uuid4
 
 from catur_jawa.application.events import CommandResponse, committed_payload
-from catur_jawa.domain.models import GameEvent, PlayerSide
+from catur_jawa.domain.models import GameEvent, Phase, PlayerSide
 from catur_jawa.domain.rules import RuleError, apply_move, apply_penalty_selection, resign
 from catur_jawa.domain.state import GameState
 
@@ -60,9 +60,8 @@ class HostMatch:
             return self._store(
                 command_id, CommandResponse(False, "COMMAND_REJECTED", {"reason": str(exc)})
             )
-        return self._store(
-            command_id, CommandResponse(True, "MOVE_COMMITTED", committed_payload(self.state, events))
-        )
+        message_type = "GAME_OVER" if self.state.phase is Phase.FINISHED else "MOVE_COMMITTED"
+        return self._store(command_id, CommandResponse(True, message_type, committed_payload(self.state, events)))
 
     def process_penalty(
         self, command_id: str, side: PlayerSide, expected_turn: int, expected_hash: str, nodes: list[str]
@@ -85,9 +84,8 @@ class HostMatch:
             return self._store(
                 command_id, CommandResponse(False, "COMMAND_REJECTED", {"reason": str(exc)})
             )
-        return self._store(
-            command_id, CommandResponse(True, "MOVE_COMMITTED", committed_payload(self.state, events))
-        )
+        message_type = "GAME_OVER" if self.state.phase is Phase.FINISHED else "MOVE_COMMITTED"
+        return self._store(command_id, CommandResponse(True, message_type, committed_payload(self.state, events)))
 
     def process_resign(self, command_id: str, side: PlayerSide) -> CommandResponse:
         cached = self._cached(command_id)

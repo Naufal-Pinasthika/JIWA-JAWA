@@ -21,12 +21,18 @@ class ClientRuntime:
         session_id: str,
         rto_ms: int = 300,
         max_rto_ms: int = 2000,
+        device_id: str = "player-b-device",
     ):
         self.name = name
+        self.device_id = device_id
+        self.host_name = "Player A"
+        self.host_device_id = "player-a-device"
         self.side = PlayerSide.B
         self.state: GameState | None = None
         self.inbox: Queue[str] = Queue()
         self.history: list[GameEvent] = []
+        self.last_rating_result: dict[str, object] | None = None
+        self.rating_snapshot: dict[str, object] | None = None
         self.transport = ReliableUDP(
             bind,
             session_id,
@@ -42,7 +48,10 @@ class ClientRuntime:
 
     def start(self) -> None:
         self.transport.start()
-        self.transport.send("HELLO", {"name": self.name, "protocol_version": 1})
+        self.transport.send(
+            "HELLO",
+            {"name": self.name, "device_id": self.device_id, "protocol_version": 1},
+        )
         self.inbox.put(f"Joining host at {self.transport.peer}")
 
     def close(self) -> None:
@@ -89,13 +98,20 @@ class ClientRuntime:
 
     def _on_message(self, envelope: Envelope, _address: tuple[str, int]) -> None:
         if envelope.message_type == "HELLO_ACK":
+            self.host_name = str(envelope.payload.get("host_name", self.host_name))
+            self.host_device_id = str(envelope.payload.get("host_device_id", self.host_device_id))
+            self._load_rating_snapshot(envelope.payload)
             self._load_state(envelope.payload["state"])
-            self.transport.send("READY", {"name": self.name})
+            self.transport.send("READY", {"name": self.name, "device_id": self.device_id})
             self.inbox.put("Handshake complete; sent READY.")
             return
         if envelope.message_type in {"GAME_STARTED", "MOVE_COMMITTED", "GAME_OVER", "STATE_SNAPSHOT"}:
             if "state" in envelope.payload:
                 self._load_state(envelope.payload["state"])
+            rating_result = envelope.payload.get("rating_result")
+            if isinstance(rating_result, dict):
+                self.last_rating_result = dict(rating_result)
+            self._load_rating_snapshot(envelope.payload)
             if envelope.message_type == "STATE_SNAPSHOT":
                 self.inbox.put("STATE_RESYNC completed from host snapshot.")
             events = self._events_from_payload(envelope.payload)
@@ -108,6 +124,11 @@ class ClientRuntime:
         self.state = GameState.from_json(dict(payload))
         if self.logger is None:
             self.logger = GameLogger(self.log_dir, self.state.game_id, "player-b")
+
+    def _load_rating_snapshot(self, payload: dict[str, Any]) -> None:
+        snapshot = payload.get("rating_snapshot")
+        if isinstance(snapshot, dict):
+            self.rating_snapshot = dict(snapshot)
 
     def _events_from_payload(self, payload: dict[str, Any]) -> list[GameEvent]:
         events: list[GameEvent] = []

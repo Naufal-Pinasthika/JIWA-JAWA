@@ -194,10 +194,10 @@ class UtilityRail(QFrame):
     def __init__(self) -> None:
         super().__init__()
         self.setObjectName("GlassRail")
-        self.setFixedWidth(108)
+        self.setFixedWidth(112)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 18, 10, 18)
-        layout.setSpacing(16)
+        layout.setContentsMargins(8, 18, 8, 18)
+        layout.setSpacing(14)
         layout.addStretch(1)
         self.history = self._button("↶\nHistory", "H")
         self.actions_button = self._button("◎\nActions", "A")
@@ -210,6 +210,7 @@ class UtilityRail(QFrame):
     def _button(self, text: str, shortcut: str) -> QPushButton:
         button = QPushButton(text)
         button.setObjectName("RailButton")
+        button.setMinimumSize(82, 72)
         button.setToolTip(f"Toggle {text.splitlines()[-1]} drawer ({shortcut})")
         button.setAccessibleName(text.splitlines()[-1])
         return button
@@ -241,6 +242,7 @@ class Drawer(QFrame):
         self.stack = QStackedWidget()
         self.history_view = QTextEdit()
         self.history_view.setReadOnly(True)
+        self.history_view.setLineWrapMode(QTextEdit.LineWrapMode.WidgetWidth)
         self.actions_page = self._create_actions()
         self.info_page = self._create_info()
         self.stack.addWidget(self.history_view)
@@ -274,6 +276,7 @@ class Drawer(QFrame):
         layout.setSpacing(12)
         self.info_text = QTextEdit()
         self.info_text.setReadOnly(True)
+        self.info_text.setLineWrapMode(QTextEdit.LineWrapMode.WidgetWidth)
         self.coordinates = QCheckBox("Show board coordinates")
         self.reduced_motion = QCheckBox("Reduced motion")
         layout.addWidget(self.info_text, 1)
@@ -286,7 +289,12 @@ class Drawer(QFrame):
         self.active_name = name
         self.title.setText(name)
         self.stack.setCurrentIndex(pages[name])
-        width = 340 if content_width is None else min(380, max(280, int(content_width * 0.30)))
+        if content_width is None:
+            width = 320
+        else:
+            width = min(360, max(240, int(content_width * 0.26)))
+            if content_width < 1100:
+                width = min(width, 280)
         self.setMinimumWidth(width)
         self.animation.stop()
         self.animation.setStartValue(self.maximumWidth())
@@ -351,18 +359,29 @@ class ReconnectOverlay(QFrame):
 
 
 class GameOverDialog(QDialog):
-    def __init__(self, state: GameState, parent: QWidget | None = None):
+    def __init__(
+        self,
+        state: GameState,
+        rating_result: dict[str, object] | None = None,
+        parent: QWidget | None = None,
+    ):
         super().__init__(parent)
         self.setWindowTitle("Game Over")
+        self.setWindowModality(Qt.WindowModality.ApplicationModal)
         self.setStyleSheet(theme.stylesheet())
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
         winner = state.winner.value if state.winner else "None"
         title = QLabel(f"Winner: Player {winner}")
         title.setObjectName("Title")
-        message = QLabel(f"Match {state.game_id[:8]} ended on turn {state.turn_number}.")
+        rating_text = _rating_summary(rating_result)
+        message_text = f"Match {state.game_id[:8]} ended on turn {state.turn_number}."
+        if rating_text:
+            message_text = f"{message_text}\n\n{rating_text}"
+        message = QLabel(message_text)
         message.setWordWrap(True)
-        close = QPushButton("Close")
+        close = QPushButton("OK")
+        close.setObjectName("Primary")
         close.clicked.connect(self.accept)
         layout.addWidget(title)
         layout.addWidget(message)
@@ -488,7 +507,9 @@ class GamePage(QWidget):
         self._position_overlay()
         if state is not None and state.phase is Phase.FINISHED and not self._game_over_shown:
             self._game_over_shown = True
-            GameOverDialog(state, self).show()
+            dialog = GameOverDialog(state, self._rating_result(), self)
+            dialog.finished.connect(lambda _result: self.leave_requested.emit())
+            dialog.open()
 
     def _handle_node_click(self, node_id: str) -> None:
         state = self._state()
@@ -644,6 +665,7 @@ class GamePage(QWidget):
             html = self._info_html([("Match", [("Status", "Waiting for host snapshot.")])])
         else:
             peer = getattr(self.runtime.transport, "peer", None)
+            rating_rows = self._rating_rows()
             html = self._info_html(
                 [
                     (
@@ -670,6 +692,7 @@ class GamePage(QWidget):
                             ("Pending packets", str(pending)),
                         ],
                     ),
+                    ("Ratings", rating_rows),
                     (
                         "Advanced",
                         [
@@ -716,6 +739,15 @@ class GamePage(QWidget):
 
     def _peer_known(self) -> bool:
         return getattr(self.runtime.transport, "peer", None) is not None
+
+    def _rating_result(self) -> dict[str, object] | None:
+        result = getattr(self.runtime, "last_rating_result", None)
+        return result if isinstance(result, dict) else None
+
+    def _rating_rows(self) -> list[tuple[str, str]]:
+        snapshot = getattr(self.runtime, "rating_snapshot", None)
+        rows = rating_snapshot_rows(snapshot)
+        return rows if rows else [("Status", "Waiting for host rating data.")]
 
     def _drain_runtime_messages(self) -> None:
         inbox = self.runtime.inbox
@@ -772,6 +804,67 @@ class GamePage(QWidget):
                     "</p>"
                 )
         return "".join(html)
+
+
+def _rating_summary(rating_result: dict[str, object] | None) -> str:
+    if not rating_result:
+        return ""
+    player_a = rating_result.get("player_a")
+    player_b = rating_result.get("player_b")
+    if not isinstance(player_a, dict) or not isinstance(player_b, dict):
+        return ""
+    return "\n".join(
+        line
+        for line in (
+            _rating_line("Player A", player_a),
+            _rating_line("Player B", player_b),
+        )
+        if line
+    )
+
+
+def rating_snapshot_lines(snapshot: object) -> list[str]:
+    return [f"{label}: {value}" for label, value in rating_snapshot_rows(snapshot)]
+
+
+def rating_snapshot_rows(snapshot: object) -> list[tuple[str, str]]:
+    if not isinstance(snapshot, dict):
+        return []
+    rows: list[tuple[str, str]] = []
+    player_a = snapshot.get("player_a")
+    player_b = snapshot.get("player_b")
+    if isinstance(player_a, dict):
+        rows.append(("Player A", _snapshot_text(player_a)))
+    if isinstance(player_b, dict):
+        rows.append(("Player B", _snapshot_text(player_b)))
+    return [(label, value) for label, value in rows if value]
+
+
+def _snapshot_text(payload: dict[object, object]) -> str:
+    name = str(payload.get("display_name", "Player"))
+    rating = _float_value(payload.get("rating"))
+    games = payload.get("games_played")
+    if rating is None or not isinstance(games, int):
+        return ""
+    game_label = "game" if games == 1 else "games"
+    return f"{name} · {rating:.0f} · {games} {game_label}"
+
+
+def _rating_line(side: str, payload: dict[object, object]) -> str:
+    name = str(payload.get("display_name", side))
+    before = _float_value(payload.get("before"))
+    after = _float_value(payload.get("after"))
+    delta = _float_value(payload.get("delta"))
+    if before is None or after is None or delta is None:
+        return ""
+    sign = "+" if delta >= 0 else ""
+    return f"{side} {name}: {before:.0f} -> {after:.0f} ({sign}{delta:.0f})"
+
+
+def _float_value(value: object) -> float | None:
+    if isinstance(value, int | float):
+        return float(value)
+    return None
 
 
 class GameWindow(QMainWindow):

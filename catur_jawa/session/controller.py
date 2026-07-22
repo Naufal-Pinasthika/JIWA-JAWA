@@ -24,7 +24,7 @@ class SessionController:
         self.active: ActiveSession | None = None
         self.generation = 0
 
-    def start_host(self, config: HostConfig) -> ActiveSession:
+    def start_host(self, config: HostConfig, device_id: str = "player-a-device") -> ActiveSession:
         validated = config.validate()
         self.disconnect()
         self.state = UiSessionState.HOST_STARTING
@@ -35,13 +35,14 @@ class SessionController:
             self.runtime_config.log_dir,
             rto_ms=self.runtime_config.rto_ms,
             max_rto_ms=self.runtime_config.max_rto_ms,
+            device_id=device_id,
         )
         runtime.start()
         self.active = ActiveSession(runtime, PlayerSide.A, self.generation)
         self.state = UiSessionState.HOST_LOBBY
         return self.active
 
-    def join_host(self, config: JoinConfig) -> ActiveSession:
+    def join_host(self, config: JoinConfig, device_id: str = "player-b-device") -> ActiveSession:
         validated = config.validate()
         self.disconnect()
         self.state = UiSessionState.CONNECTING
@@ -54,6 +55,7 @@ class SessionController:
             "00000000-0000-0000-0000-000000000000",
             rto_ms=self.runtime_config.rto_ms,
             max_rto_ms=self.runtime_config.max_rto_ms,
+            device_id=device_id,
         )
         runtime.start()
         self.active = ActiveSession(runtime, PlayerSide.B, self.generation)

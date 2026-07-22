@@ -124,10 +124,11 @@ def stylesheet() -> str:
         color: #160807;
     }}
     QPushButton#RailButton {{
-        min-width: 96px;
-        min-height: 76px;
+        min-width: 82px;
+        min-height: 72px;
         border-radius: 22px;
-        font-size: 15px;
+        font-size: 14px;
+        padding: 8px 6px;
     }}
     QPushButton#MenuButton {{
         min-width: 52px;

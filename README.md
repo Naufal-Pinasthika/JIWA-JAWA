@@ -1,57 +1,58 @@
 # Catur Jawa: Dam-daman over Reliable UDP
 
-Two independent Python processes play Dam-daman Jawa through UDP sockets. One Player act as an 
-authoritative host, while another player joins as a client.
+Dua proses Python independen memainkan Dam-daman Jawa melalui UDP sockets. Satu pemain bertindak sebagai
+host yang otoritatif, sementara pemain lain bergabung sebagai client.
 
-## Feature Matrix
+## Bonus Implementation
 
-| Feature | Status |
-| --- | --- |
-| Pure Dam-daman domain engine | Implemented |
-| Host-authoritative two-process GUI | Implemented |
-| Reliable UDP transport | Implemented |
-| JSONL local gameplay logs | Implemented |
-| Netem helper scripts | Implemented |
-| PDF usage guide | Implemented |
-| SQLite Elo-style rating service | Implemented |
-| PySide6 GUI | Implemented |
-| Raft logger | Documented as not implemented |
+- [x] Buatlah GUI untuk permainan tersebut
+- [ ] Mekanisme logging dilakukan di program terpisah (bukan program yang digunakan untuk melakukan permainan) dengan mengimplementasikan Raft untuk menjamin kebenarannya.
+- [x] Buatlah sistem rating untuk seluruh player, perhitungan dibebaskan tetapi jangan gunakan perhitungan linear.
+- [x] Buat video demo program (ajak 1 orang temen)
 
-## Quick Start
+## Setup
+
+### Build
 
 ```bash
+git clone https://github.com/Naufal-Pinasthika/JIWA-JAWA
+cd JIWA-JAWA
 chmod +x scripts/bootstrap_linux.sh
 ./scripts/bootstrap_linux.sh
-source .venv/bin/activate
-pytest -q
 ```
 
-Run the normal GUI:
+### Setup Tailscale VPN
 
 ```bash
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up
+```
+
+Pada [https://console.tailscale.com/admin/machines](https://console.tailscale.com/admin/machines), login akun
+tailscale dan invite email temanmu agar dapat terhubung nantinya.
+
+### Run
+
+```bash
+source .venv/bin/activate
 python3 main.py
 ```
 
-Package command:
+Ketik `Host`.
+
+Sebagai host nanti, akan memberikan IP hasil dari tailscale, dan dapat digunakan ke diri sendiri untuk
+dimainkan / teman lain.
+
+Pada terminal lain / machine network lain, jalankan:
 
 ```bash
-catur-jawa
+source .venv/bin/activate
+python3 main.py
 ```
 
-For one-machine testing, open two terminals and run `python3 main.py` in each. In the first window
-choose Host Game. In the second window choose Join Game and connect to `127.0.0.1:9999`.
-
-## Two Machines
-
-On Player A's machine, run `python3 main.py`, choose Host Game, and share the room address shown in
-the lobby. On Player B's machine, run `python3 main.py`, choose Join Game, and enter that address.
-
-Open UDP port `9999` in the firewall if needed. Host and peer addresses are configured through the
-GUI setup screens.
-
-2 Devices on a different network will require VPN like Tailscale to make it work.
+Ketik `Join` dan masukkan IP dari host.
 
 ## Game Controls
 
-Click a piece, then click a highlighted destination. History, actions, info, resync, coordinates,
-and resignation are available through the right-side utility drawer.
+Klik bidak, lalu klik tujuan yang disorot. History, actions, info, resync, coordinates,
+dan resignation tersedia melalui drawer utilitas di sisi kanan.

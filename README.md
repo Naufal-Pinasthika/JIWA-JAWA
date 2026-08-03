@@ -3,6 +3,15 @@
 Dua proses Python independen memainkan Dam-daman Jawa melalui UDP sockets. Satu pemain bertindak sebagai
 host yang otoritatif, sementara pemain lain bergabung sebagai client.
 
+## Mandatory Implementation
+
+- [x] Pemain A dan B bermain pada 2 program yang berbeda
+- [x] Program berkomunikasi melewati socket UDP
+- [x] Implementasikan protokol TCP atau protokol buatan sendiri di atas UDP untuk memastikan pengiriman berhasil
+- [x] Permainan catur berjalan sesuai dengan aturan yang berlaku
+- [x] Gunakan tc-netem untuk simulasi packet loss minimal 50% dan hapus rule setelah selesai (lihat `netem_run.sh`)
+- [x] Pemain dapat memahami kondisi permainan (history pergerakan sendiri dan/atau lawan)
+
 ## Bonus Implementation
 
 - [x] Buatlah GUI untuk permainan tersebut
@@ -51,6 +60,20 @@ python3 main.py
 ```
 
 Ketik `Join` dan masukkan IP dari host.
+
+### Test Packet Loss (tc-netem)
+
+Cek interface aktif dengan `ip link` (untuk Tailscale biasanya `tailscale0`), lalu jalankan program di
+bawah loss menggunakan `scripts/netem_run.sh`. Script ini mengaplikasikan 50% loss, menjalankan perintah,
+dan menghapus rule otomatis saat selesai:
+
+```bash
+sudo ./scripts/netem_run.sh tailscale0 50 -- python3 main.py
+```
+
+Skrip netem lain di `scripts/`:
+- `netem_apply.sh <iface> [loss%]` — terapkan loss (default 50%)
+- `netem_clear.sh <iface>` — hapus rule netem
 
 ## Game Controls
 
